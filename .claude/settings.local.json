@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd E:\\\\learning\\\\LLM\\\\hello-agents\\\\code\\\\chapter13\\\\universal_life_agent:*)"
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+# LangChain 框架
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.0
+langgraph>=0.2.0
+
+# MCP 支持
+fastmcp>=0.1.0
+mcp>=1.0.0
+
+# FastAPI
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# HTTP 客户端
+httpx>=0.27.0
+aiohttp>=3.10.0
+
+# 环境变量
+python-dotenv>=1.0.0
+
+# 日志
+loguru>=0.7.0
+
+# 搜索服务 (Tavily)
+tavily-python>=0.5.0
+
+# 学术资源
+arxiv>=2.1.0
+PyGithub>=2.3.0
+
+# PDF 解析
+pypdf>=4.0.0
+
+# 测试
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+
+# 其他工具
+python-dateutil>=2.8.2
+
+# ============ 记忆系统依赖 ============
+
+# Redis（可选，用于短期记忆）
+redis>=5.0.0
+
+# Milvus（可选，用于长期记忆）
+pymilvus>=2.4.0
+
+# 向量嵌入（可选）
+sentence-transformers>=2.2.0
+
+# 向量相似度计算
+scipy>=1.11.0
