@@ -209,8 +209,8 @@ def create_main_graph() -> StateGraph:
     主图流程（集成记忆系统）:
         START
           -> normalize_input
-          -> memory_manager (检索记忆)
           -> route_intent
+          -> memory_manager (检索记忆，使用路由结果)
           -> prepare_memory (为子图准备记忆)
           -> branch_to_subgraph
           -> memory_judge (审查候选记忆)
@@ -236,9 +236,9 @@ def create_main_graph() -> StateGraph:
 
     # 添加边
     workflow.add_edge(START, "normalize_input")
-    workflow.add_edge("normalize_input", "memory_manager")
-    workflow.add_edge("memory_manager", "route_intent")
-    workflow.add_edge("route_intent", "prepare_memory")
+    workflow.add_edge("normalize_input", "route_intent")
+    workflow.add_edge("route_intent", "memory_manager")
+    workflow.add_edge("memory_manager", "prepare_memory")
     workflow.add_edge("prepare_memory", "branch_to_subgraph")
     workflow.add_edge("branch_to_subgraph", "memory_judge")
     workflow.add_edge("memory_judge", "reviewer")

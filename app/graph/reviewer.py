@@ -78,25 +78,24 @@ async def reviewer_node(state: dict) -> dict:
 
     logger.info(f"[Reviewer] 正在审查 {active_domain} 子图输出...")
 
-    # 先做基本的格式检查，如果输出存在且长度合理则直接通过
+    # 先做基本的格式检查
     result = subgraph_output.get("result", "")
 
-    # 如果有实质性的输出内容，直接通过审查
-    if result and len(str(result)) > 20:
-        logger.info(f"[Reviewer] 输出内容充足，直接通过审查")
+    # 如果输出为空或过短，直接失败
+    if not result or len(str(result).strip()) < 10:
+        logger.info(f"[Reviewer] 输出内容为空或过短，审查不通过")
         review_result = {
-            "passed": True,
-            "score": 0.9,
-            "violations": [],
-            "critique": "输出内容符合要求",
-            "suggestions": []
+            "passed": False,
+            "score": 0.1,
+            "violations": ["输出为空或过短"],
+            "critique": "子图未返回有效结果",
+            "suggestions": ["请重新执行"]
         }
     else:
-        # 输出为空或太短，进行详细审查
+        # 有实质性内容，通过 LLM 进行领域规则审查
         try:
             llm = get_llm()
 
-            # 构建审查提示
             domain_rules = HARD_RULES.get(active_domain, HARD_RULES["search"])
             rules_text = "\n".join(f"- {r}" for r in domain_rules["rules"])
 
@@ -108,7 +107,7 @@ async def reviewer_node(state: dict) -> dict:
 {rules_text}
 
 子图输出结果:
-{result}
+{result[:1000]}
 
 请严格按照以下 JSON 格式输出审查结果：
 ```json
@@ -130,18 +129,17 @@ async def reviewer_node(state: dict) -> dict:
             response = await llm.ainvoke(messages)
             content = response.content if hasattr(response, 'content') else str(response)
 
-            # 解析审查结果
             review_result = parse_review_response(content)
 
         except Exception as e:
-            logger.error(f"[Reviewer] 详细审查失败: {e}")
-            # 默认通过（因为已有内容）
+            logger.error(f"[Reviewer] LLM 审查失败: {e}")
+            # 审查失败时默认不通过，确保质量
             review_result = {
-                "passed": True,
-                "score": 0.7,
-                "violations": [],
-                "critique": "有输出内容，默认通过",
-                "suggestions": []
+                "passed": False,
+                "score": 0.5,
+                "violations": [f"审查过程出错: {str(e)[:50]}"],
+                "critique": "审查过程出现异常",
+                "suggestions": ["请重试"]
             }
 
     # 记录审查历史
@@ -181,13 +179,12 @@ def parse_review_response(content: str) -> dict:
     try:
         return json.loads(content)
     except json.JSONDecodeError:
-        # 解析失败，返回默认通过
         return {
-            "passed": True,
-            "score": 0.7,
+            "passed": False,
+            "score": 0.5,
             "violations": [],
-            "critique": "无法解析审查结果，默认通过",
-            "suggestions": []
+            "critique": "无法解析审查结果",
+            "suggestions": ["请重试"]
         }
 
 

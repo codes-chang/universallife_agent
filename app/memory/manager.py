@@ -216,19 +216,27 @@ class MemoryManager(IMemoryManager):
         candidate,
         user_id: str
     ):
-        """存储记忆候选（经过审查）"""
-        # 这个方法在 memory_judge 中实现
-        # 这里只是接口实现
-        pass
+        """Store a memory candidate after judging"""
+        from .judge import MemoryJudge
+        judge = MemoryJudge(
+            short_term_store=self._short_term_store,
+            long_term_store=self._long_term_store
+        )
+        decision = await judge.judge(candidate, user_id)
+        await judge.apply_decision(decision, user_id)
+        return decision
 
     async def store_batch(
         self,
-        candidates: List,
+        candidates: list,
         user_id: str
-    ) -> List:
-        """批量存储记忆候选"""
-        # 这个方法在 memory_judge 中实现
-        pass
+    ) -> list:
+        """Batch store memory candidates"""
+        decisions = []
+        for candidate in candidates:
+            decision = await self.store(candidate, user_id)
+            decisions.append(decision)
+        return decisions
 
     async def should_retrieve_memory(
         self,

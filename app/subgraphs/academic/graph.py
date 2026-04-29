@@ -4,6 +4,8 @@ from langgraph.graph import StateGraph, START, END
 from .state import AcademicSubgraphState
 from . import nodes
 from ..base import BaseSubgraph
+from ...core.logging import logger
+from ...memory.models import MemoryCandidate, MemoryType, MemoryScope
 
 
 class AcademicSubgraph(BaseSubgraph):
@@ -58,6 +60,62 @@ class AcademicSubgraph(BaseSubgraph):
             # 默认执行 GitHub 搜索
             search_result = await academic_service.search_github(query, max_results=5)
             return academic_service.format_github_results(search_result)
+
+    async def generate_candidate_memories(self, state: AcademicSubgraphState) -> AcademicSubgraphState:
+        """生成学术相关的候选记忆"""
+        candidates = []
+
+        task_input = state.get("task_input", "")
+
+        # 提取学术偏好关键词
+        preference_keywords = {
+            "研究方向": ["NLP", "CV", "强化学习", "大模型", "图神经网络", "联邦学习", "多模态"],
+            "编程语言": ["Python", "Java", "C++", "Rust", "Go", "TypeScript"],
+            "资源类型": ["论文", "代码", "数据集", "教程", "开源项目", "工具库"]
+        }
+
+        extracted_preferences = []
+        for pref_type, keywords in preference_keywords.items():
+            for keyword in keywords:
+                if keyword.lower() in task_input.lower():
+                    extracted_preferences.append(f"{pref_type}: {keyword}")
+
+        # 生成偏好候选记忆
+        for pref in extracted_preferences:
+            candidate = MemoryCandidate(
+                content=f"用户学术偏好: {pref}",
+                memory_type=MemoryType.USER_PREFERENCE,
+                scope=MemoryScope.DOMAIN,
+                domain="academic",
+                importance=0.7,
+                confidence=0.75,
+                source="subgraph:academic",
+                metadata={"preference_type": "academic_style", "original_query": task_input}
+            )
+            candidates.append(candidate.model_dump())
+
+        # 如果执行成功，生成经验记忆
+        final_result = state.get("final_result", "")
+        if final_result and "失败" not in final_result:
+            experience_candidate = MemoryCandidate(
+                content=f"成功完成学术搜索任务: {task_input[:50]}...",
+                memory_type=MemoryType.TASK_EPISODE,
+                scope=MemoryScope.DOMAIN,
+                domain="academic",
+                importance=0.5,
+                confidence=0.6,
+                source="subgraph:academic",
+                metadata={"task_type": "academic_search"}
+            )
+            candidates.append(experience_candidate.model_dump())
+
+        # 更新状态
+        state["candidate_memories"] = candidates
+
+        if candidates:
+            logger.info(f"[AcademicSubgraph] 生成 {len(candidates)} 个候选记忆")
+
+        return state
 
 
 def format_github_repo(repo_data: dict) -> str:

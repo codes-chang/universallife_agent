@@ -4,6 +4,8 @@ from langgraph.graph import StateGraph, START, END
 from .state import FinanceSubgraphState
 from . import nodes
 from ..base import BaseSubgraph
+from ...core.logging import logger
+from ...memory.models import MemoryCandidate, MemoryType, MemoryScope
 
 
 class FinanceSubgraph(BaseSubgraph):
@@ -46,6 +48,62 @@ class FinanceSubgraph(BaseSubgraph):
             return format_price_comparison(price_data)
         else:
             return "请明确您的查询类型（股票查询或价格比较）"
+
+    async def generate_candidate_memories(self, state: FinanceSubgraphState) -> FinanceSubgraphState:
+        """生成金融相关的候选记忆"""
+        candidates = []
+
+        task_input = state.get("task_input", "")
+
+        # 提取金融偏好关键词
+        preference_keywords = {
+            "投资偏好": ["稳健", "激进", "长期", "短期", "价值投资", "成长股"],
+            "关注行业": ["科技", "金融", "医疗", "新能源", "消费", "地产"],
+            "价格敏感度": ["性价比", "高端", "平价", "折扣", "优惠", "预算"]
+        }
+
+        extracted_preferences = []
+        for pref_type, keywords in preference_keywords.items():
+            for keyword in keywords:
+                if keyword in task_input:
+                    extracted_preferences.append(f"{pref_type}: {keyword}")
+
+        # 生成偏好候选记忆
+        for pref in extracted_preferences:
+            candidate = MemoryCandidate(
+                content=f"用户金融偏好: {pref}",
+                memory_type=MemoryType.USER_PREFERENCE,
+                scope=MemoryScope.DOMAIN,
+                domain="finance",
+                importance=0.7,
+                confidence=0.75,
+                source="subgraph:finance",
+                metadata={"preference_type": "finance_style", "original_query": task_input}
+            )
+            candidates.append(candidate.model_dump())
+
+        # 如果执行成功，生成经验记忆
+        final_result = state.get("final_result", "")
+        if final_result and "失败" not in final_result:
+            experience_candidate = MemoryCandidate(
+                content=f"成功完成金融查询任务: {task_input[:50]}...",
+                memory_type=MemoryType.TASK_EPISODE,
+                scope=MemoryScope.DOMAIN,
+                domain="finance",
+                importance=0.5,
+                confidence=0.6,
+                source="subgraph:finance",
+                metadata={"task_type": "finance_query"}
+            )
+            candidates.append(experience_candidate.model_dump())
+
+        # 更新状态
+        state["candidate_memories"] = candidates
+
+        if candidates:
+            logger.info(f"[FinanceSubgraph] 生成 {len(candidates)} 个候选记忆")
+
+        return state
 
 
 def format_price_comparison(data: dict) -> str:

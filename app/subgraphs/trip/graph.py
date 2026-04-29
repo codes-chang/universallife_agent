@@ -7,6 +7,8 @@ from langgraph.graph import StateGraph, START, END
 from .state import TripSubgraphState
 from . import nodes
 from ..base import BaseSubgraph
+from ...core.logging import logger
+from ...memory.models import MemoryCandidate, MemoryType, MemoryScope
 
 
 class TripSubgraph(BaseSubgraph):
@@ -80,6 +82,63 @@ class TripSubgraph(BaseSubgraph):
         ])
 
         return "\n".join(plan_parts)
+
+    async def generate_candidate_memories(self, state: TripSubgraphState) -> TripSubgraphState:
+        """生成旅行相关的候选记忆"""
+        candidates = []
+
+        task_input = state.get("task_input", "")
+
+        # 提取旅行偏好关键词
+        preference_keywords = {
+            "旅行节奏": ["休闲", "紧凑", "深度游", "打卡", "慢游", "自由行"],
+            "住宿偏好": ["酒店", "民宿", "青旅", "度假村", "快捷", "高档"],
+            "出行方式": ["自驾", "高铁", "飞机", "徒步", "骑行", "公共交通"],
+            "目的地偏好": ["海边", "山区", "城市", "古镇", "自然", "文化"]
+        }
+
+        extracted_preferences = []
+        for pref_type, keywords in preference_keywords.items():
+            for keyword in keywords:
+                if keyword in task_input:
+                    extracted_preferences.append(f"{pref_type}: {keyword}")
+
+        # 生成偏好候选记忆
+        for pref in extracted_preferences:
+            candidate = MemoryCandidate(
+                content=f"用户旅行偏好: {pref}",
+                memory_type=MemoryType.USER_PREFERENCE,
+                scope=MemoryScope.DOMAIN,
+                domain="trip",
+                importance=0.7,
+                confidence=0.75,
+                source="subgraph:trip",
+                metadata={"preference_type": "trip_style", "original_query": task_input}
+            )
+            candidates.append(candidate.model_dump())
+
+        # 如果执行成功，生成经验记忆
+        final_result = state.get("final_result", "")
+        if final_result and "失败" not in final_result:
+            experience_candidate = MemoryCandidate(
+                content=f"成功完成旅行规划任务: {task_input[:50]}...",
+                memory_type=MemoryType.TASK_EPISODE,
+                scope=MemoryScope.DOMAIN,
+                domain="trip",
+                importance=0.5,
+                confidence=0.6,
+                source="subgraph:trip",
+                metadata={"task_type": "trip_planning"}
+            )
+            candidates.append(experience_candidate.model_dump())
+
+        # 更新状态
+        state["candidate_memories"] = candidates
+
+        if candidates:
+            logger.info(f"[TripSubgraph] 生成 {len(candidates)} 个候选记忆")
+
+        return state
 
 
 def create_trip_subgraph() -> StateGraph:

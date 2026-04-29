@@ -54,9 +54,9 @@ class Settings(BaseSettings):
     memory_fallback_on_error: bool = True  # 出错时是否降级为无记忆模式
 
     # Embedding 配置
-    embedding_provider: str = "mock"  # mock/openai/sentence-transformer
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimension: int = 1536
+    embedding_provider: str = "openai"  # openai/sentence-transformer
+    embedding_model: str = "embedding-3"
+    embedding_dimension: int = 2048
 
     # Redis 配置（短期记忆）
     redis_url: str = "redis://localhost:6379/0"

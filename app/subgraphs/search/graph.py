@@ -4,6 +4,8 @@ from langgraph.graph import StateGraph, START, END
 from .state import SearchSubgraphState
 from . import nodes
 from ..base import BaseSubgraph
+from ...core.logging import logger
+from ...memory.models import MemoryCandidate, MemoryType, MemoryScope
 
 
 class SearchSubgraph(BaseSubgraph):
@@ -44,6 +46,62 @@ class SearchSubgraph(BaseSubgraph):
         search_result = await search_service.search(query, max_results=max_results)
 
         return search_service.format_search_results(search_result)
+
+    async def generate_candidate_memories(self, state: SearchSubgraphState) -> SearchSubgraphState:
+        """生成搜索相关的候选记忆"""
+        candidates = []
+
+        task_input = state.get("task_input", "")
+
+        # 提取搜索偏好关键词
+        preference_keywords = {
+            "来源偏好": ["学术", "新闻", "官方", "博客", "论坛", "wiki"],
+            "内容类型": ["教程", "论文", "文档", "代码", "数据", "报告"],
+            "语言偏好": ["中文", "英文", "日文", "双语"]
+        }
+
+        extracted_preferences = []
+        for pref_type, keywords in preference_keywords.items():
+            for keyword in keywords:
+                if keyword in task_input:
+                    extracted_preferences.append(f"{pref_type}: {keyword}")
+
+        # 生成偏好候选记忆
+        for pref in extracted_preferences:
+            candidate = MemoryCandidate(
+                content=f"用户搜索偏好: {pref}",
+                memory_type=MemoryType.USER_PREFERENCE,
+                scope=MemoryScope.DOMAIN,
+                domain="search",
+                importance=0.7,
+                confidence=0.75,
+                source="subgraph:search",
+                metadata={"preference_type": "search_style", "original_query": task_input}
+            )
+            candidates.append(candidate.model_dump())
+
+        # 如果执行成功，生成经验记忆
+        final_result = state.get("final_result", "")
+        if final_result and "失败" not in final_result:
+            experience_candidate = MemoryCandidate(
+                content=f"成功完成搜索任务: {task_input[:50]}...",
+                memory_type=MemoryType.TASK_EPISODE,
+                scope=MemoryScope.DOMAIN,
+                domain="search",
+                importance=0.5,
+                confidence=0.6,
+                source="subgraph:search",
+                metadata={"task_type": "web_search"}
+            )
+            candidates.append(experience_candidate.model_dump())
+
+        # 更新状态
+        state["candidate_memories"] = candidates
+
+        if candidates:
+            logger.info(f"[SearchSubgraph] 生成 {len(candidates)} 个候选记忆")
+
+        return state
 
 
 def create_search_subgraph() -> StateGraph:
