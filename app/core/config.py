@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     # GitHub Token
     github_token: str = ""
 
-    # 开发模式
-    mock_mode: bool = False
-
     # 日志配置
     log_level: str = "INFO"
 
@@ -108,9 +105,6 @@ class Settings(BaseSettings):
 
     def is_tool_available(self, tool_name: str) -> bool:
         """检查工具是否可用"""
-        if self.mock_mode:
-            return True
-
         tool_keys = {
             "amap": self.amap_api_key,
             "tavily": self.tavily_api_key,
@@ -140,10 +134,10 @@ def validate_config():
         warnings.append("AMAP_API_KEY 未配置，天气/旅行功能可能无法使用")
 
     if not settings.tavily_api_key:
-        warnings.append("TAVILY_API_KEY 未配置，搜索功能将使用 Mock")
+        warnings.append("TAVILY_API_KEY 未配置，搜索功能将不可用")
 
     if not settings.github_token:
-        warnings.append("GITHUB_TOKEN 未配置，GitHub 功能将使用 Mock")
+        warnings.append("GITHUB_TOKEN 未配置，GitHub 搜索可能受速率限制")
 
     # 记忆系统配置检查
     if settings.memory_enabled:
@@ -162,7 +156,7 @@ def validate_config():
                 warnings.append("Milvus 已启用但 pymilvus 未安装，长期记忆将不可用")
 
         if not settings.redis_enabled and not settings.milvus_enabled:
-            warnings.append("记忆系统已启用但 Redis 和 Milvus 都未启用，记忆功能将使用 Mock")
+            warnings.append("记忆系统已启用但 Redis 和 Milvus 都未启用，记忆功能将使用内存存储（重启丢失）")
 
     if errors:
         error_msg = "配置错误:\n" + "\n".join(f"  - {e}" for e in errors)
@@ -187,7 +181,6 @@ def print_config():
     print(f"高德 API: {'已配置' if settings.amap_api_key else '未配置'}")
     print(f"Tavily API: {'已配置' if settings.tavily_api_key else '未配置'}")
     print(f"GitHub Token: {'已配置' if settings.github_token else '未配置'}")
-    print(f"Mock 模式: {'启用' if settings.mock_mode else '禁用'}")
     print(f"日志级别: {settings.log_level}")
 
     # 记忆系统配置

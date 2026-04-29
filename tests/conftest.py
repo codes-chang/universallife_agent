@@ -3,6 +3,7 @@
 import pytest
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 # 添加项目根目录到 Python 路径
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -11,18 +12,21 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 @pytest.fixture
 def mock_llm(monkeypatch):
-    """Mock LLM 服务"""
+    """Mock LLM 服务（用于单元测试）"""
+    from langchain_core.messages import AIMessage
+
+    mock = AsyncMock()
+    mock.ainvoke = AsyncMock(return_value=AIMessage(content='{"result": "mock response"}'))
+    mock.astream = AsyncMock()
+    mock.with_structured_output = MagicMock(return_value=mock)
+    mock.bind_tools = MagicMock(return_value=mock)
+    mock.model_name = "mock-model"
+
     from app.services import llm_service
+    monkeypatch.setattr(llm_service, "_llm_instance", mock)
 
-    # 使用 Mock LLM
-    monkeypatch.setattr("app.services.llm_service.settings.mock_mode", True)
+    yield mock
 
-    # 重置 LLM 实例
-    llm_service.reset_llm()
-
-    yield llm_service.get_llm(use_mock=True)
-
-    # 清理
     llm_service.reset_llm()
 
 
@@ -110,17 +114,6 @@ def mock_github_results():
             }
         ]
     }
-
-
-@pytest.mark.asyncio
-async def test_sample_main_graph(main_graph_runner, sample_queries):
-    """示例：测试主图基本功能"""
-    result = await main_graph_runner.run(sample_queries["outfit"])
-
-    assert result["success"] is True
-    assert result["active_domain"] == "outfit"
-    assert result["final_answer"] is not None
-    assert len(result["final_answer"]) > 0
 
 
 # 测试配置

@@ -189,7 +189,7 @@ async def health_check():
         "status": "healthy",
         "service": settings.app_name,
         "version": settings.app_version,
-        "mock_mode": settings.mock_mode
+        "llm_model": settings.llm_model_id
     }
 
 

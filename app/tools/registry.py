@@ -1,7 +1,4 @@
-"""工具注册中心
-
-集中管理所有工具的注册和获取。
-"""
+"""工具注册中心"""
 
 from typing import Dict, List, Optional, Any
 from langchain_core.tools import StructuredTool
@@ -14,18 +11,12 @@ from .adapters import (
     GitHubSearchTool,
     ArxivSearchTool
 )
-from .mocks import MockToolRegistry
 
 
 class ToolRegistry:
-    """工具注册中心
+    """工具注册中心"""
 
-    管理所有工具的注册、获取和可用性检查。
-    支持真实工具和 Mock 工具的切换。
-    """
-
-    def __init__(self, mock_mode: bool = False):
-        self.mock_mode = mock_mode
+    def __init__(self):
         self._collections: Dict[str, ToolCollection] = {
             "outfit": ToolCollection(),
             "search": ToolCollection(),
@@ -34,25 +25,24 @@ class ToolRegistry:
             "trip": ToolCollection(),
         }
         self._global_collection = ToolCollection()
-
-        # 注册所有工具
         self._register_default_tools()
 
     def _register_default_tools(self):
         """注册默认工具"""
+        from ..core.config import settings
 
-        # ============ Outfit 工具 ============
-        self.register_tool("outfit", "weather", AmapWeatherTool)
+        # Outfit 工具
+        self.register_tool("outfit", "weather", AmapWeatherTool, api_key=settings.amap_api_key)
 
-        # ============ Search 工具 ============
-        self.register_tool("search", "tavily_search", TavilySearchTool)
+        # Search 工具
+        self.register_tool("search", "tavily_search", TavilySearchTool, api_key=settings.tavily_api_key)
 
-        # ============ Academic 工具 ============
-        self.register_tool("academic", "github_search", GitHubSearchTool)
+        # Academic 工具
+        self.register_tool("academic", "github_search", GitHubSearchTool, token=settings.github_token)
         self.register_tool("academic", "arxiv_search", ArxivSearchTool)
 
-        # ============ Trip 工具 ============
-        self.register_tool("trip", "weather", AmapWeatherTool)
+        # Trip 工具
+        self.register_tool("trip", "weather", AmapWeatherTool, api_key=settings.amap_api_key)
 
     def register_tool(
         self,
@@ -61,49 +51,34 @@ class ToolRegistry:
         tool_class: type,
         **kwargs
     ) -> None:
-        """注册工具
-
-        Args:
-            domain: 领域名称 (outfit, search, finance, academic, trip)
-            name: 工具名称
-            tool_class: 工具类
-            **kwargs: 工具初始化参数
-        """
-        tool_kwargs = {"mock_mode": self.mock_mode, **kwargs}
-        tool = tool_class(**tool_kwargs)
+        """注册工具"""
+        tool = tool_class(**kwargs)
         self._collections[domain].register(tool)
         self._global_collection.register(tool)
 
     def get_tool(self, name: str) -> Optional[BaseTool]:
-        """获取工具（通过名称）"""
         return self._global_collection.get(name)
 
     def get_domain_tools(self, domain: str) -> List[BaseTool]:
-        """获取指定领域的所有工具"""
         collection = self._collections.get(domain)
         if collection:
             return list(collection._tools.values())
         return []
 
     async def get_available_domain_tools(self, domain: str) -> List[BaseTool]:
-        """获取指定领域可用的工具"""
         collection = self._collections.get(domain)
         if collection:
             return await collection.get_available_tools()
         return []
 
     def list_all_tools(self) -> Dict[str, List[str]]:
-        """列出所有领域的工具"""
         return {
             domain: collection.list_available()
             for domain, collection in self._collections.items()
         }
 
     async def get_langchain_tools(self, domain: str = None) -> List[StructuredTool]:
-        """获取 LangChain 格式的工具列表
-
-        用于 LangChain/LangGraph 的 tool binding。
-        """
+        """获取 LangChain 格式的工具列表"""
         tools = []
 
         if domain:
@@ -126,15 +101,13 @@ class ToolRegistry:
     def _create_args_schema(self, schema: Dict[str, Any]):
         """从 JSON Schema 创建 Pydantic 模型"""
         from pydantic import BaseModel, Field
-        import inspect
 
-        # 简化处理：使用动态创建 BaseModel 的方式
         fields = {}
         properties = schema.get("properties", {})
         required = set(schema.get("required", []))
 
         for field_name, field_info in properties.items():
-            field_type = str  # 简化类型处理
+            field_type = str
             default = ... if field_name in required else None
             description = field_info.get("description", "")
             fields[field_name] = (field_type, Field(default=default, description=description))
@@ -147,22 +120,12 @@ class ToolRegistry:
 _global_registry: Optional[ToolRegistry] = None
 
 
-def get_tool_registry(mock_mode: bool = None) -> ToolRegistry:
-    """获取全局工具注册表实例
-
-    Args:
-        mock_mode: 是否使用 Mock 模式。如果不指定，使用环境变量配置。
-
-    Returns:
-        ToolRegistry 实例
-    """
+def get_tool_registry() -> ToolRegistry:
+    """获取全局工具注册表实例"""
     global _global_registry
 
     if _global_registry is None:
-        from ..core.config import settings
-        if mock_mode is None:
-            mock_mode = settings.mock_mode
-        _global_registry = ToolRegistry(mock_mode=mock_mode)
+        _global_registry = ToolRegistry()
 
     return _global_registry
 
