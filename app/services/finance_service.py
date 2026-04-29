@@ -1,7 +1,8 @@
-"""金融服务 - Yahoo Finance API + 价格比较"""
+"""金融服务 - Yahoo Finance API + 价格比较（Tavily Search）"""
 
 import httpx
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from datetime import datetime
 
 from ..core.config import settings
 from ..core.logging import logger
@@ -10,7 +11,7 @@ from ..core.logging import logger
 class FinanceService:
     """金融服务
 
-    提供股票查询功能，使用 Yahoo Finance API（无需认证）。
+    提供股票查询和商品比价功能。
     """
 
     def __init__(self):
@@ -69,6 +70,93 @@ class FinanceService:
                 "timestamp": datetime.now().isoformat(),
                 "source": "yahoo-finance"
             }
+
+    async def compare_prices(self, product_name: str) -> Dict[str, Any]:
+        """通过 Tavily 搜索比较商品价格
+
+        Args:
+            product_name: 商品名称
+
+        Returns:
+            价格比较数据
+        """
+        from .search_service import get_search_service
+        from .llm_service import get_llm
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        search_service = get_search_service()
+        search_query = f"{product_name} 价格 对比 京东 淘宝 拼多多 购买"
+        search_result = await search_service.search(search_query, max_results=8)
+
+        results_text = ""
+        for i, r in enumerate(search_result.get("results", []), 1):
+            results_text += f"{i}. {r.get('title', '')}\n   摘要: {r.get('snippet', '')}\n   链接: {r.get('url', '')}\n\n"
+
+        if not results_text:
+            return {
+                "product": product_name,
+                "prices": [],
+                "best_price": None,
+                "best_platform": "",
+                "timestamp": datetime.now().isoformat(),
+                "source": "tavily-search",
+                "note": f"未找到 '{product_name}' 的价格信息"
+            }
+
+        llm = get_llm()
+        prompt = f"""请从以下搜索结果中提取 "{product_name}" 的价格信息。
+
+搜索结果:
+{results_text}
+
+请输出 JSON 格式:
+{{
+  "product": "商品名",
+  "prices": [
+    {{"platform": "平台名", "price": 价格数字, "url": "链接", "note": "备注"}}
+  ],
+  "best_price": 最低价格,
+  "best_platform": "最低价平台"
+}}
+
+如果没有找到具体价格，prices 设为空列表。只输出 JSON，不要其他内容。"""
+
+        response = await llm.ainvoke([
+            SystemMessage(content="你是一个商品价格分析助手，擅长从搜索结果中提取结构化的价格数据。"),
+            HumanMessage(content=prompt)
+        ])
+
+        content = response.content if hasattr(response, 'content') else str(response)
+
+        import json
+        try:
+            if "```json" in content:
+                start = content.find("```json") + 7
+                end = content.find("```", start)
+                content = content[start:end].strip()
+            elif "```" in content:
+                start = content.find("```") + 3
+                end = content.find("```", start)
+                content = content[start:end].strip()
+            elif "{" in content:
+                start = content.find("{")
+                end = content.rfind("}") + 1
+                content = content[start:end]
+
+            price_data = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            price_data = {
+                "product": product_name,
+                "prices": [],
+                "best_price": None,
+                "best_platform": "",
+                "note": "无法提取结构化价格数据",
+                "search_summary": search_result.get("answer", "")
+            }
+
+        price_data["timestamp"] = datetime.now().isoformat()
+        price_data["source"] = "tavily-search"
+        return price_data
 
     def format_stock_info(self, stock_data: Dict[str, Any]) -> str:
         """格式化股票信息为文本"""

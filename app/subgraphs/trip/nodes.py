@@ -1,7 +1,4 @@
-"""Trip 子图节点实现
-
-从现有 helloagents-trip-planner 项目迁移并简化。
-"""
+"""Trip 子图节点实现"""
 
 import re
 from ...services.llm_service import get_llm
@@ -10,13 +7,18 @@ from ...core.logging import logger
 from .state import TripSubgraphState
 
 
-# Trip 规划 Prompt
 TRIP_PLANNER_PROMPT = """你是旅行规划专家。请根据以下信息生成详细的旅行计划：
 
 基本信息:
 - 城市: {city}
 - 天数: {days}天
 - 天气: {weather}
+
+推荐景点:
+{attractions}
+
+推荐酒店:
+{hotels}
 
 请输出 JSON 格式的旅行计划，包含：
 1. 每日行程安排（景点、餐饮）
@@ -48,17 +50,14 @@ async def build_plan_node(state: TripSubgraphState) -> TripSubgraphState:
 
     task_input = state.get("task_input", "")
 
-    # 提取城市
-    city_pattern = r'(?:去|游览|规划|旅游|旅行)\s*([a-zA-Z\u4e00-\u9fa5]+)(?:市|的)?'
+    city_pattern = r'(?:去|游览|规划|旅游|旅行)\s*([a-zA-Z一-龥]+)(?:市|的)?'
     city_match = re.search(city_pattern, task_input)
     if city_match:
         state["city"] = city_match.group(1)
     else:
-        # 尝试从开头提取城市
         words = task_input.split()
         state["city"] = words[0] if words else "北京"
 
-    # 提取天数
     day_pattern = r'(\d+)\s*(?:天|日)'
     day_match = re.search(day_pattern, task_input)
     if day_match:
@@ -72,29 +71,62 @@ async def build_plan_node(state: TripSubgraphState) -> TripSubgraphState:
 
 
 async def execute_tools_node(state: TripSubgraphState) -> TripSubgraphState:
-    """工具执行节点 - 获取天气信息"""
+    """工具执行节点 - 获取天气和 POI 信息"""
     logger.info("[Trip] 正在获取旅行相关信息...")
 
     city = state.get("city", "北京")
     days = state.get("travel_days", 3)
 
     try:
+        # 获取天气
         weather_service = get_weather_service()
         weather_data = await weather_service.get_weather(city, days=days)
-
         state["weather_info"] = weather_data
-
-        # 获取天气摘要
-        weather_summary = weather_service.get_weather_summary(weather_data)
-        state["intermediate_result"] = weather_summary
-
-        # 生成模拟景点推荐
-        state["attractions"] = generate_mock_attractions(city, days)
-        state["hotels"] = generate_mock_hotels(city)
-
+        state["intermediate_result"] = weather_service.get_weather_summary(weather_data)
     except Exception as e:
-        logger.error(f"[Trip] 信息获取失败: {e}")
-        state["intermediate_result"] = f"获取 {city} 旅行信息时遇到问题"
+        logger.error(f"[Trip] 天气获取失败: {e}")
+        state["intermediate_result"] = f"获取 {city} 天气信息时遇到问题"
+
+    # 获取真实景点数据
+    try:
+        from .tools import search_poi
+
+        attractions = []
+        for keyword in ["景点", "公园", "博物馆"]:
+            result = await search_poi(keyword, city)
+            if result.success and result.data.get("results"):
+                for poi in result.data["results"][:3]:
+                    attractions.append({
+                        "name": poi.get("name", ""),
+                        "description": f"{poi.get('address', '')} | 评分: {poi.get('rating', 'N/A')}",
+                        "type": poi.get("type", ""),
+                    })
+
+        state["attractions"] = attractions[:days * 2] if attractions else []
+    except Exception as e:
+        logger.warning(f"[Trip] 景点搜索失败: {e}")
+        state["attractions"] = []
+
+    # 获取真实酒店数据
+    try:
+        from .tools import search_poi
+
+        result = await search_poi("酒店", city)
+        if result.success and result.data.get("results"):
+            state["hotels"] = [
+                {
+                    "name": h.get("name", ""),
+                    "rating": h.get("rating", ""),
+                    "price_range": h.get("cost", "价格未知"),
+                    "location": h.get("address", ""),
+                }
+                for h in result.data["results"][:5]
+            ]
+        else:
+            state["hotels"] = []
+    except Exception as e:
+        logger.warning(f"[Trip] 酒店搜索失败: {e}")
+        state["hotels"] = []
 
     return state
 
@@ -105,83 +137,77 @@ async def synthesize_result_node(state: TripSubgraphState) -> TripSubgraphState:
 
     try:
         llm = get_llm()
+        from langchain_core.messages import HumanMessage, SystemMessage
 
         city = state.get("city", "北京")
         days = state.get("travel_days", 3)
         weather_info = state.get("weather_info", {})
         attractions = state.get("attractions", [])
+        hotels = state.get("hotels", [])
 
         # 构建天气摘要
         weather_text = ""
         if weather_info.get("casts"):
-            casts = weather_info["casts"]
             weather_parts = []
-            for cast in casts[:days]:
+            for cast in weather_info["casts"][:days]:
                 weather_parts.append(f"{cast['date']}: {cast['day_weather']}, {cast['day_temp']}°C")
             weather_text = "\n".join(weather_parts)
 
         # 构建景点列表
         attractions_text = ""
-        for attr in attractions:
-            attractions_text += f"- {attr['name']}: {attr['description']}\n"
+        for i, attr in enumerate(attractions[:days * 2], 1):
+            attractions_text += f"{i}. {attr['name']} - {attr['description']}\n"
+
+        # 构建酒店列表
+        hotels_text = ""
+        for h in hotels[:3]:
+            hotels_text += f"- {h['name']} ({h.get('rating', 'N/A')}分, {h.get('price_range', '')})\n"
 
         prompt = TRIP_PLANNER_PROMPT.format(
             city=city,
             days=days,
-            weather=weather_text if weather_text else "天气良好"
+            weather=weather_text if weather_text else "天气良好",
+            attractions=attractions_text if attractions_text else "暂无具体景点信息",
+            hotels=hotels_text if hotels_text else "暂无具体酒店信息"
         )
 
-        prompt += f"\n推荐景点:\n{attractions_text}"
-
         response = await llm.ainvoke([
-            SystemMessage(content="你是旅行规划专家"),
+            SystemMessage(content="你是旅行规划专家，请根据提供的真实数据生成实用的旅行计划。"),
             HumanMessage(content=prompt)
         ])
 
         content = response.content if hasattr(response, 'content') else str(response)
 
-        # 尝试解析为结构化结果
+        # 构建最终结果
         result_parts = [
-            f"🌍 {city} {days}日游旅行计划",
+            f"{city} {days}日游旅行计划",
             "",
-            "🌤️ 天气预报:",
+            "天气预报:",
         ]
 
         if weather_text:
             for line in weather_text.split("\n"):
                 result_parts.append(f"  {line}")
 
-        result_parts.extend([
-            "",
-            "📋 每日行程:",
-        ])
+        result_parts.extend(["", "推荐景点:"])
+        for attr in attractions[:days * 2]:
+            result_parts.append(f"  - {attr['name']}: {attr['description']}")
 
-        # 如果有景点信息，添加到结果中
-        for i in range(days):
-            result_parts.append(f"\n第{i+1}天:")
-            # 从 attractions 中选择合适的景点
-            day_attractions = [a for a in attractions if a.get("day") == i + 1]
-            if not day_attractions:
-                day_attractions = attractions[i*2:(i+1)*2] if len(attractions) > i*2 else [attractions[0]] if attractions else []
-
-            for attr in day_attractions[:2]:
-                result_parts.append(f"  • {attr['name']}: {attr['description']}")
-
-            result_parts.append(f"  🍽️ 餐饮: 推荐{city}特色美食")
-            result_parts.append(f"  🚗 交通: 建议使用公共交通/打车")
-
-        # 添加住宿建议
-        hotels = state.get("hotels", [])
         if hotels:
-            result_parts.append("\n🏨 住宿建议:")
-            result_parts.append(f"  推荐: {hotels[0]['name']}")
+            result_parts.extend(["", "推荐酒店:"])
+            for h in hotels[:3]:
+                result_parts.append(f"  - {h['name']} (评分: {h.get('rating', 'N/A')}, {h.get('price_range', '')})")
 
         result_parts.extend([
             "",
-            "💡 温馨提示:",
-            "  - 请提前查看景点开放时间",
+            "AI 行程建议:",
+            content if content else "建议游览上述景点，品尝当地特色美食。",
+            "",
+            "温馨提示:",
+            "  - 请提前查看景点开放时间和门票信息",
             "  - 注意天气变化，适当携带衣物",
-            "  - 建议提前预订门票和酒店"
+            "  - 建议提前预订酒店",
+            f"  - 数据来源: 高德地图 POI + 实时天气"
         ])
 
         state["final_result"] = "\n".join(result_parts)
@@ -190,46 +216,6 @@ async def synthesize_result_node(state: TripSubgraphState) -> TripSubgraphState:
         logger.error(f"[Trip] 计划生成失败: {e}")
         city = state.get("city", "北京")
         days = state.get("travel_days", 3)
-        state["final_result"] = f"为您规划的 {city} {days}日游行程，建议游览当地著名景点，品尝特色美食。"
+        state["final_result"] = f"为您规划的 {city} {days}日游行程。请查看上述景点和酒店推荐。"
 
     return state
-
-
-def generate_mock_attractions(city: str, days: int) -> list:
-    """生成模拟景点数据"""
-    attractions = []
-
-    templates = [
-        {"name": f"{city}博物馆", "description": "了解当地历史文化"},
-        {"name": f"{city}公园", "description": "休闲放松的好去处"},
-        {"name": f"{city}古街", "description": "感受传统风情"},
-        {"name": f"{city}塔", "description": "地标性建筑"},
-        {"name": f"{city}湖", "description": "美丽的自然风光"},
-        {"name": f"{city}艺术中心", "description": "现代文化艺术"},
-    ]
-
-    for i in range(min(days * 2, len(templates))):
-        attractions.append({
-            "day": (i // 2) + 1,
-            **templates[i]
-        })
-
-    return attractions
-
-
-def generate_mock_hotels(city: str) -> list:
-    """生成模拟酒店数据"""
-    return [
-        {
-            "name": f"{city}大酒店",
-            "rating": "4.5",
-            "price_range": "300-500元",
-            "location": f"{city}市中心"
-        },
-        {
-            "name": f"{city}快捷酒店",
-            "rating": "4.0",
-            "price_range": "200-300元",
-            "location": f"{city}火车站附近"
-        }
-    ]
