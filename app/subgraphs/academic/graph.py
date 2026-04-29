@@ -1,6 +1,5 @@
 """Academic 子图 - 学术办公"""
 
-from langgraph.graph import StateGraph, START, END
 from .state import AcademicSubgraphState
 from . import nodes
 from ..base import BaseSubgraph
@@ -148,22 +147,6 @@ def format_github_repo(repo_data: dict) -> str:
     parts.append(f"\n数据来源: {repo_data.get('source', 'GitHub')}")
 
     return "\n".join(parts)
-
-
-def create_academic_subgraph() -> StateGraph:
-    """创建学术子图工作流"""
-    workflow = StateGraph(AcademicSubgraphState)
-
-    workflow.add_node("build_plan", nodes.build_plan_node)
-    workflow.add_node("execute_tools", nodes.execute_tools_node)
-    workflow.add_node("synthesize_result", nodes.synthesize_result_node)
-
-    workflow.add_edge(START, "build_plan")
-    workflow.add_edge("build_plan", "execute_tools")
-    workflow.add_edge("execute_tools", "synthesize_result")
-    workflow.add_edge("synthesize_result", END)
-
-    return workflow.compile()
 
 
 _academic_subgraph = None

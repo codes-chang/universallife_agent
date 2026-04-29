@@ -3,7 +3,6 @@
 从现有 helloagents-trip-planner 项目迁移并改造。
 """
 
-from langgraph.graph import StateGraph, START, END
 from .state import TripSubgraphState
 from . import nodes
 from ..base import BaseSubgraph
@@ -139,22 +138,6 @@ class TripSubgraph(BaseSubgraph):
             logger.info(f"[TripSubgraph] 生成 {len(candidates)} 个候选记忆")
 
         return state
-
-
-def create_trip_subgraph() -> StateGraph:
-    """创建旅行子图工作流"""
-    workflow = StateGraph(TripSubgraphState)
-
-    workflow.add_node("build_plan", nodes.build_plan_node)
-    workflow.add_node("execute_tools", nodes.execute_tools_node)
-    workflow.add_node("synthesize_result", nodes.synthesize_result_node)
-
-    workflow.add_edge(START, "build_plan")
-    workflow.add_edge("build_plan", "execute_tools")
-    workflow.add_edge("execute_tools", "synthesize_result")
-    workflow.add_edge("synthesize_result", END)
-
-    return workflow.compile()
 
 
 _trip_subgraph = None

@@ -1,6 +1,5 @@
 """Finance 子图 - 金融购物"""
 
-from langgraph.graph import StateGraph, START, END
 from .state import FinanceSubgraphState
 from . import nodes
 from ..base import BaseSubgraph
@@ -131,22 +130,6 @@ def format_price_comparison(data: dict) -> str:
     parts.append(f"⏰ 数据来源: {data.get('source', 'unknown')}")
 
     return "\n".join(parts)
-
-
-def create_finance_subgraph() -> StateGraph:
-    """创建金融子图工作流"""
-    workflow = StateGraph(FinanceSubgraphState)
-
-    workflow.add_node("build_plan", nodes.build_plan_node)
-    workflow.add_node("execute_tools", nodes.execute_tools_node)
-    workflow.add_node("synthesize_result", nodes.synthesize_result_node)
-
-    workflow.add_edge(START, "build_plan")
-    workflow.add_edge("build_plan", "execute_tools")
-    workflow.add_edge("execute_tools", "synthesize_result")
-    workflow.add_edge("synthesize_result", END)
-
-    return workflow.compile()
 
 
 _finance_subgraph = None

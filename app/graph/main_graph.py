@@ -20,11 +20,11 @@ from ..memory import memory_manager_node, prepare_memory_for_subgraph, memory_ju
 
 
 # 子图导入
-from ..subgraphs.outfit.graph import create_outfit_subgraph
-from ..subgraphs.search.graph import create_search_subgraph
-from ..subgraphs.finance.graph import create_finance_subgraph
-from ..subgraphs.academic.graph import create_academic_subgraph
-from ..subgraphs.trip.graph import create_trip_subgraph
+from ..subgraphs.outfit.graph import get_outfit_subgraph
+from ..subgraphs.search.graph import get_search_subgraph
+from ..subgraphs.finance.graph import get_finance_subgraph
+from ..subgraphs.academic.graph import get_academic_subgraph
+from ..subgraphs.trip.graph import get_trip_subgraph
 
 
 def normalize_input_node(state: MainGraphState) -> MainGraphState:
