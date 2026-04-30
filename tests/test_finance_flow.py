@@ -69,7 +69,7 @@ async def test_finance_nodes():
 @pytest.mark.asyncio
 async def test_finance_format_stock_info():
     """测试股票信息格式化"""
-    from app.subgroups.finance.nodes import format_price_comparison
+    from app.subgraphs.finance.nodes import format_price_comparison
     from app.services.finance_service import get_finance_service
 
     service = get_finance_service()
